@@ -5,6 +5,10 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
+const stripe = require('stripe')(
+  'sk_test_51M9AC1JuwvDJx01sUEZvWBx8FabParFyHD3xjpLEvGYKA0lEckTmrdQY0yHyb6kjPe3KVJ21IoJtdyDN407FrvFO007FOpAHuc'
+);
+
 const app = express();
 
 // middleware
@@ -42,10 +46,10 @@ async function run() {
     const bookingsCollection = client.db('doctorsPortal').collection('bookings');
     const usersCollection = client.db('doctorsPortal').collection('users');
     const doctorsCollection = client.db('doctorsPortal').collection('doctors');
+    const paymentsCollection = client.db('doctorsPortal').collection('payments');
 
     // make sure use verify admin after verifyJWT
-    const verifyAdmin = async(req, res, next) => {
-      
+    const verifyAdmin = async (req, res, next) => {
       const decodedEmail = req.decoded.email;
       const query = { email: decodedEmail };
       const user = await usersCollection.findOne(query);
@@ -95,7 +99,6 @@ async function run() {
     });
 
     app.put('/users/admin/:id', verifyJWT, async (req, res) => {
-      
       const id = req.params.id;
       const filter = { _id: ObjectId(id) };
       const options = { upsert: true };
@@ -161,7 +164,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post('/doctors', verifyJWT,verifyAdmin, async (req, res) => {
+    app.post('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
       const doctor = req.body;
       const result = await doctorsCollection.insertOne(doctor);
       res.send(result);
@@ -173,10 +176,60 @@ async function run() {
       res.send(result);
     });
 
-    app.delete('/doctors/:id', verifyJWT,verifyAdmin, async (req, res) => {
+    app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
       const kotoNumber = req.params.id;
       const filter = { _id: ObjectId(kotoNumber) };
       const result = await doctorsCollection.deleteOne(filter);
+      res.send(result);
+    });
+
+    // temporary to update price field on appointment options
+    /*  app.get('/addPrice', async (req, res) => {
+      const filter = {};
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: {
+          price: 999,
+        },
+      };
+      const result = await appointmentOptions.updateMany(filter, updateDoc, options);
+      res.send(result);
+    }); */
+
+    app.get('/bookings/:payid', async (req, res) => {
+      const id = req.params.payid;
+      const query = { _id: ObjectId(id) };
+      const booking = await bookingsCollection.findOne(query);
+      res.send(booking);
+    });
+
+    app.post('/create-payment-intent', async (req, res) => {
+      const booking = req.body;
+      const price = booking.price;
+      const amount = price * 100;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        currency: 'usd',
+        amount: amount,
+        payment_method_types: ['card'],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post('/payments', async (req, res) => {
+      const payment = req.body;
+      const result = await paymentsCollection.insertOne(payment);
+      const id = payment.bookingId;
+      const filter = { _id: ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId,
+        },
+      };
+      const updatedResult = await bookingsCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
   } finally {
