@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const port = process.env.PORT || 5000;
+const nodemailer = require("nodemailer");
+const mg = require('nodemailer-mailgun-transport');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -8,6 +10,52 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const stripe = require('stripe')(
   'sk_test_51M9AC1JuwvDJx01sUEZvWBx8FabParFyHD3xjpLEvGYKA0lEckTmrdQY0yHyb6kjPe3KVJ21IoJtdyDN407FrvFO007FOpAHuc'
 );
+
+
+// nodemailer 
+
+/* function sendBookingEmail(booking){
+  const {email,appointmentDate, treatment, slot} = booking;
+  let transporter = nodemailer.createTransport({
+    host: 'smtp.sendgrid.net',
+    port: 587,
+    auth: {
+        user: "apikey",
+        pass: process.env.SENDGRID_API_KEY
+    }
+ }) */
+
+
+ const auth = {
+  auth: {
+    api_key: process.env.MAILGUN_EMAIL_API_KEY,
+    domain: process.env.EMAIL_SEND_DOMAIN
+  }
+}
+
+const transporter = nodemailer.createTransport(mg(auth));
+
+ transporter.sendMail({
+  from: "SENDER_EMAIL", // verified sender email
+  to: email, // recipient email
+  subject: `your appointment for ${treatment} is confirmed`, // Subject line
+  text: "Hello world!", // plain text body
+  html: `<h3>Your appointment is confirmed</h3>
+  <div>
+  <p>Your appointment for treatment : ${treatment}</p>
+  <p>Your appointment date is on ${appointmentDate} at ${slot}</p>
+  <p>Thanks for visiting Doctors portal</p>
+  </div>
+
+  `, // html body
+}, function(error, info){
+  if (error) {
+    console.log(error);
+  } else {
+    console.log('Email sent: ' + info.response);
+  }
+});
+}
 
 const app = express();
 
@@ -137,6 +185,8 @@ async function run() {
         return res.send({ acknowledged: false, message });
       }
       const result = await bookingsCollection.insertOne(booking);
+      // send grid booking
+      sendBookingEmail(booking)
       res.send(result);
     });
 
